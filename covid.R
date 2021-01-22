@@ -1,13 +1,14 @@
-library(dplyr)
-library(lubridate)
-library(stringi)
-library(stringr)
-library(plotly)
-library(rgdal)
+paquetes<-c("stringr","stringi", "lubridate", "ggplot2", "dplyr", "plotly", "rgdal", "leaflet", "htmlwidgets", "htmltools", "tidytext", "tidyverse", "wordcloud")
 
+for(i in paquetes){
+  if(!require(i, character.only = TRUE)){
+    install.packages(i, dependencies=TRUE)
+  }
+  require(i, character.only = TRUE)  
+}
 
 #leo la base de datos
-base <- read.csv("C:/Users/Porotos/Documents/Desconfio_Covid/Base de datos.csv", sep= ",")
+base <- read.csv("Base de datos.csv", sep= ",")
 
 #primera mirada a los datos
 View(base)
@@ -17,6 +18,17 @@ str(base)
 
 #corrijo los acentos y caracteres extraños
 original <- base
+
+
+#verifico existencia de datos nulos
+#hay valores en blanco en lugar de NA. Arreglo eso
+base[base==""]<-NA
+
+as.data.frame(apply(is.na(base),2,sum))
+
+
+
+
 
 for(i in names(base)){
   eval(parse(text=paste0("base$\"",i,"\"<-str_replace_all(stri_trans_general(original$\"",i,"\",id=\"latin-ascii\"), \"[^[:alnum:]]\", \" \")")))
@@ -186,14 +198,9 @@ url <- 'https://archive.md/Q4cjr'
 webpage <- read_html(url)
 
 #Using CSS selectors to scrape the rankings section y lo convierto a texto
-rank_data_html <- html_nodes(webpage,'.sub-title') %>% html_text()
+rank_data_html <- html_nodes(webpage,'description') %>% html_text()
+
+rank_data_html <- html_nodes(webpage, "[old-class=article-body]") %>% html_text()
 
 itemprop="description"
-  
-
-
-#Let's have a look at the rankings
-head(rank_data)
-
-[1] "1." "2." "3." "4." "5." "6."
 
