@@ -1,0 +1,426 @@
+---
+title: "Proyecto Desconfío - Chequeo Covid"
+output: 
+  flexdashboard::flex_dashboard:
+    storyboard: true
+    social: menu
+    source: embed
+---
+
+```{r setup, include=FALSE}
+#librerías 
+# stringr y stringi: para arreglar caracteres con acento 
+#lubridate: para corregir problemas de fechas
+#ggplot y plotly: para graficar
+#dplyr: manejo de fechas y datos
+#rgdal, leaflet, htmlwidgets y htmltools: para mapas
+paquetes<-c("stringr","stringi", "lubridate", "ggplot2", "dplyr", "plotly", "rgdal", "leaflet", "htmlwidgets", "htmltools", "tidytext", "tidyverse", "wordcloud", "DT","hrbrthemes")
+
+for(i in paquetes){
+  if(!require(i, character.only = TRUE)){
+    install.packages(i, dependencies=TRUE)
+  }
+  require(i, character.only = TRUE)  
+}
+```
+
+```{r, echo=FALSE}
+#leo la base de datos
+base <- read.csv("Base de datos.csv", sep= ",")
+
+#primera mirada a los datos
+#View(base)
+
+#chequeo tipo de datos
+#str(base)
+
+#corrijo los acentos y caracteres extraños
+original <- base
+```
+
+```{r, echo=FALSE}
+#hay valores en blanco en lugar de NA. Arreglo eso
+base[base==""]<-NA
+nulos <- as.data.frame(apply(is.na(base),2,sum))
+colnames(nulos) <- c("Cant_Valores_Nulos")
+```
+
+```{r, echo = FALSE}
+#for(i in names(base)){
+#  eval(parse(text=paste0("base$\"",i,"\"<-str_replace_all(stri_trans_general(original$\"",i,"\",id=\"latin-ascii\"), \"[^[:alnum:]]\", \" \")")))
+#}
+#names(base)<-stri_trans_general(names(base),id="latin-ascii")
+
+#corrección del tipo de datos
+#cambio el formato de fecha de texto a date
+base$When.did.you.see.the.claim. <- as.Date(base$When.did.you.see.the.claim., format="%m/%d/%Y")
+
+#hay dos fechas de Diciembre 2021 mal cargadas. Se corrigen a Dic 2020
+base$When.did.you.see.the.claim.[base$When.did.you.see.the.claim. > Sys.Date()] <- "12-02-2020"
+
+#cambio formato de pais a factor
+base$Country.1 <- as.factor(base$Country.1)
+base$Country.2 <- as.factor(base$Country.2)
+base$Country.3 <- as.factor(base$Country.3)
+base$Country.4 <- as.factor(base$Country.4)
+
+#cambio organizacion a factor
+base$Organization <- as.factor(base$Organization)
+
+#cambio quien posteo a factor
+base$Who.said.posted.it. <- as.factor(base$Who.said.posted.it.)
+
+#cambio lenguaje a factor
+base$Language.of.your.fact.check <- as.factor(base$Language.of.your.fact.check)
+
+#cambio rating factor
+base$Final.rating <- as.factor(base$Final.rating)
+
+#cambio categoría a factor
+base$Category <- as.factor(base$Category)
+
+#importo base de paises para extraer continente
+paises <- read.csv("https://pkgstore.datahub.io/JohnSnowLabs/country-and-continent-codes-list/country-and-continent-codes-list-csv_csv/data/b7876b7f496677669644f3d1069d3121/country-and-continent-codes-list-csv_csv.csv", sep = "," )
+paises$nombre_corto <- stringr::str_split_fixed(paises$Country_Name,",",2)[,1]
+paises <- paises[,c("Continent_Name", "nombre_corto")]
+
+#corrijo algunos paises en el df de paises
+paises$nombre_corto[paises$nombre_corto == "United Kingdom of Great Britain & Northern Ireland"] <- "United Kingdom"
+paises$nombre_corto[paises$nombre_corto == "United States of America"] <- "United States"
+paises[nrow(paises)+1, ] = c("Europe", "North Macedonia")
+paises$nombre_corto[paises$nombre_corto == "Cote d'Ivoire"] <- "Ivory Coast"
+paises$nombre_corto[paises$nombre_corto == "Russian Federation"] <- "Russia"
+paises$nombre_corto[paises$nombre_corto == "Syrian Arab Republic"] <- "Syria"
+paises$nombre_corto[paises$nombre_corto == "Slovakia (Slovak Republic)"] <- "Slovakia"
+paises$nombre_corto[paises$nombre_corto == "Libyan Arab Jamahiriya"] <- "Libya"
+paises$nombre_corto[paises$nombre_corto == "Kyrgyz Republic"] <- "Kyrgyzstan"
+paises$nombre_corto[paises$nombre_corto == "Timor-Leste"] <- "Timor"
+
+paises[nrow(paises)+1, ] <- c("Asia", "South Korea")
+paises[nrow(paises)+1, ] <- c("Asia", "North Korea")
+paises[nrow(paises)+1, ] <- c("Europe", "Kosovo")
+
+#corrijo paises mal escritos en la base
+base$Country.1[base$Country.1 == "UK"] <- "United Kingdom"
+base$Country.1[base$Country.1 == "India "] <- "India"
+base$Country.1[base$Country.1 == "DR Congo"] <- "Congo"
+levels(base$Country.2) <- as.factor(c(levels(base$Country.2), "Congo"))
+base$Country.2[base$Country.2 == "DR Congo"] <- "Congo"
+base$Country.2[base$Country.2 == "USA"] <- "United States"
+base$Country.2[base$Country.2 == "Spain "] <- "Spain"
+base$Country.2[base$Country.2 == "Serbia "] <- "Serbia"
+base$Country.2[base$Country.2 == "Croatia "] <- "Croatia"
+base$Country.2[base$Country.2 == "Northern Ireland"] <- "United Kingdom"
+levels(base$Country.2) <- as.factor(c(levels(base$Country.2), "Papua New Guinea"))
+base$Country.2[base$Country.2 == "Papua-New-Guinea"] <- "Papua New Guinea"
+levels(base$Country.3) <- as.factor(c(levels(base$Country.3), "Congo"))
+base$Country.3[base$Country.3 == "DR Congo"] <- "Congo"
+base$Country.3[base$Country.3 == "Serbia "] <- "Serbia"
+base$Country.3[base$Country.3 == "Venezuela "] <- "Venezuela"
+levels(base$Country.4) <- as.factor(c(levels(base$Country.4), "Congo"))
+base$Country.4[base$Country.4 == "DR Congo"] <- "Congo"
+
+#creo cuatro variables continente, 1 por pais
+base <- dplyr::left_join(base, paises, by=c("Country.1" = "nombre_corto"), keep= FALSE, suffix=c("1","2"))
+base <- dplyr::left_join(base, paises, by=c("Country.2" = "nombre_corto"), keep= FALSE, suffix=c("1","2"))
+base <- dplyr::left_join(base, paises, by=c("Country.3" = "nombre_corto"), keep= FALSE, suffix=c("3","4"))
+base <- dplyr::left_join(base, paises, by=c("Country.4" = "nombre_corto"), keep= FALSE, suffix=c("3","4"))
+
+#reviso cuales quedaron sin dato
+#View(base[is.na(base$Continent_Name2) & (base$Country.2 != ""),])
+#View(base[is.na(base$Continent_Name2) & (base$Country.2 != ""),])
+
+#arreglo los paises/areas sin continente
+#campo country.1
+base$Continent_Name1[base$Country.1 == "Middle East"] <- "Asia"
+base$Continent_Name1[base$Country.1 == "Asia"] <- "Asia"
+base$Continent_Name1[base$Country.1 == "Africa"] <- "Africa"
+base$Continent_Name1[base$Country.1 == "North Africa"] <- "Africa"
+base$Continent_Name1[base$Country.1 == "West Africa"] <- "Africa"
+base$Continent_Name1[base$Country.1 == "Southern Africa"] <- "Africa"
+base$Continent_Name1[base$Country.1 == "East Africa"] <- "Africa"
+base$Continent_Name1[base$Country.1 == "Europe"] <- "Europe"
+base$Continent_Name1[base$Country.1 == "South America"] <- "South America"
+base$Continent_Name1[base$Country.1 == "North America"] <- "North America"
+
+#campo country.2
+base$Continent_Name2[base$Country.2 == "Middle East"] <- "Asia"
+base$Continent_Name2[base$Country.2 == "Asia"] <- "Asia"
+base$Continent_Name2[base$Country.2 == "Africa"] <- "Africa"
+base$Continent_Name2[base$Country.2 == "North Africa"] <- "Africa"
+base$Continent_Name2[base$Country.2 == "West Africa"] <- "Africa"
+base$Continent_Name2[base$Country.2 == "Southern Africa"] <- "Africa"
+base$Continent_Name2[base$Country.2 == "East Africa"] <- "Africa"
+base$Continent_Name2[base$Country.2 == "Europe"] <- "Europe"
+base$Continent_Name2[base$Country.2 == "South America"] <- "South America"
+base$Continent_Name2[base$Country.2 == "North America"] <- "North America"
+
+#campo country.3
+base$Continent_Name3[base$Country.3 == "Middle East"] <- "Asia"
+base$Continent_Name3[base$Country.3 == "Asia"] <- "Asia"
+base$Continent_Name3[base$Country.3 == "Africa"] <- "Africa"
+base$Continent_Name3[base$Country.3 == "North Africa"] <- "Africa"
+base$Continent_Name3[base$Country.3 == "West Africa"] <- "Africa"
+base$Continent_Name3[base$Country.3 == "Southern Africa"] <- "Africa"
+base$Continent_Name3[base$Country.3 == "East Africa"] <- "Africa"
+base$Continent_Name3[base$Country.3 == "Europe"] <- "Europe"
+base$Continent_Name3[base$Country.3 == "South America"] <- "South America"
+base$Continent_Name3[base$Country.3 == "North America"] <- "North America"
+
+#campo country.4
+base$Continent_Name4[base$Country.4 == "Central America"] <- "North America"
+```
+
+```{r, echo=FALSE}
+#verificación de valores únicos
+#hay varias tablas que contienen valores idénticos duplicados (por ej. other, others, Other)
+
+#table(base$Category)
+base$Category[base$Category == "Conspiracy theory" | base$Category == "Conspiracy Theory"] <- "Conspiracy theories"
+base$Category[base$Category == "Cure " | base$Category == "Cures" | base$Category == "Cures "] <- "Cure"
+base$Category[base$Category == "other" | base$Category == "Other" | base$Category == "Prevention" ] <- "Others" 
+base$Category[base$Category == "Symptoms "] <- "Symptoms" 
+
+#elimino niveles no usados
+base$Category <- factor(base$Category)
+
+#en el campo final.rating se corrigen errores y se agrupan los menores en categoría "otros"
+base$Final.rating <- toupper(base$Final.rating)
+base$Final.rating[base$Final.rating == "MISLEADING " | base$Final.rating == "MISL" | base$Final.rating == " MISLEADING "] <- "MISLEADING" 
+base$Final.rating[base$Final.rating == "FALSE "] <- "FALSE" 
+base$Final.rating[base$Final.rating == "PARTLY FALSE" | base$Final.rating == "PARTLY FALSE " | base$Final.rating == "PARTLY FALSE"] <- "PARTIALLY FALSE" 
+base$Final.rating[base$Final.rating == "NO EVIDENCE "] <- "NO EVIDENCE" 
+base$Final.rating[base$Final.rating == "MAINLY FALSE"] <- "FALSE" 
+base$Final.rating[base$Final.rating == "MISLEADING/FALSE" | base$Final.rating == "FALSE AND WITHOUT CONTEXT"] <- "FALSE" 
+base$Final.rating[base$Final.rating == "MAINLY CORRECT" | base$Final.rating == "MOSTLY TRUE"] <- "PARTIALLY TRUE" 
+base$Final.rating[base$Final.rating == "" | base$Final.rating == "(ORG. DOESN'T APPLY RATING)" | base$Final.rating == "EXPLANATORY" | base$Final.rating == "INACCURATE" | base$Final.rating == "UNPROVEN" | base$Final.rating == "UNSUPPORTED" ] <- "OTHERS" 
+
+base$Final.rating <- factor(base$Final.rating)
+
+```
+
+```{r, echo=FALSE}
+#analisis por paises
+#compilo el total de casos por país
+total_x_pais <- rbind(as.data.frame(table(base$Country.1)), as.data.frame(table(base$Country.2)),as.data.frame(table(base$Country.3)),as.data.frame(table(base$Country.4)))
+total_x_pais <- aggregate(total_x_pais$Freq, by=list(Var1 = total_x_pais$Var1), FUN=sum)
+
+#cambio los nombres de las columnas y elimino valores nulos
+colnames(total_x_pais) <- c("Pais", "Freq")
+total_x_pais <- total_x_pais[total_x_pais$Pais != "", ]
+total_x_pais <- total_x_pais[!is.na(total_x_pais$Pais), ]
+
+#grafíco en plotly para que sea interactivo
+#graf_pais <- ggplot(total_x_pais[total_x_pais$Freq>200,], aes(x=Pais, y=Freq, fill=Freq)) +
+#              geom_bar(stat="identity") + 
+#              theme(axis.text.x = element_text(angle = 45, vjust = 0.5, hjust=1)) +
+#              ggtitle("Cantidad de reportes por país (paises con más de 200 reportes)")
+
+#plotly::ggplotly(graf_pais)
+```
+
+```{r, echo=FALSE, include=FALSE}
+#modifico las columnas para armar el mapa
+colnames(total_x_pais) <- c("name", "Freq")
+
+#corrijo algunos paises para que no falle el joineo
+#levels(total_x_pais$name) <- c(levels(total_x_pais$name), "Bosnia and Herz.", "Korea", "CÃ´te d'Ivoire","Dem. Rep. Korea","Czech Rep.","S. Sudan")
+#total_x_pais$name[total_x_pais$name=="North Macedonia"] <- "Macedonia"
+#total_x_pais$name[total_x_pais$name=="North Korea"] <- "Dem. Rep. Korea"
+#total_x_pais$name[total_x_pais$name=="South Korea"] <- "Korea"
+#total_x_pais$name[total_x_pais$name=="Bosnia and Herzegovina"] <- "Bosnia and Herz."
+#total_x_pais$name[total_x_pais$name=="Singapore"] <- "Malaysia"
+#total_x_pais$name[total_x_pais$name=="Czech Republic"] <- "Czech Rep."
+
+
+#total_x_pais$name[total_x_pais$name=="Hong Kong"] <- "China"
+#total_x_pais$name[total_x_pais$name=="Ivory Coast"] <- "CÃ´te d'Ivoire"
+#total_x_pais$name[total_x_pais$name=="South Sudan"] <- "S. Sudan"
+#total_x_pais$name[total_x_pais$name=="Bahrain"] <- "Qatar"
+#total_x_pais$name[total_x_pais$name=="Timor"] <- "Timor-Leste"
+
+
+#leo el mapa y joineo datos
+countries_p <- readOGR("custom.geo.json")
+#guardo el original para usarlo en el paso siguiente
+countries <- countries_p
+countries_p@data <- left_join(countries_p@data, total_x_pais, by=c("name"))
+
+
+countries_p@data$Freq[countries_p@data$name == "Macedonia"] <- countries_p@data$Freq[countries_p@data$name == "Macedonia"] + total_x_pais$Freq[total_x_pais$name == "North Macedonia"]
+countries_p@data$Freq[countries_p@data$name == "Korea"] <- total_x_pais$Freq[total_x_pais$name == "South Korea"]
+countries_p@data$Freq[countries_p@data$name == "Dem. Rep. Korea"] <-total_x_pais$Freq[total_x_pais$name == "North Korea"]
+countries_p@data$Freq[countries_p@data$name == "Bosnia and Herz."] <- total_x_pais$Freq[total_x_pais$name == "Bosnia and Herzegovina"]
+countries_p@data$Freq[countries_p@data$name == "Malaysia"] <- countries_p@data$Freq[countries_p@data$name == "Malaysia"] + total_x_pais$Freq[total_x_pais$name == "Singapore"]
+countries_p@data$Freq[countries_p@data$name == "Czech Rep."] <- total_x_pais$Freq[total_x_pais$name == "Czech Republic"]
+countries_p@data$Freq[countries_p@data$name == "China"] <- countries_p@data$Freq[countries_p@data$name == "China"] + total_x_pais$Freq[total_x_pais$name == "Hong Kong"]
+countries_p@data$Freq[countries_p@data$name == "CÃ´te d'Ivoire"] <- total_x_pais$Freq[total_x_pais$name == "Ivory Coast"]
+countries_p@data$Freq[countries_p@data$name == "S. Sudan"] <- total_x_pais$Freq[total_x_pais$name == "South Sudan"]
+countries_p@data$Freq[countries_p@data$name == "Qatar"] <- countries_p@data$Freq[countries_p@data$name == "Qatar"] + total_x_pais$Freq[total_x_pais$name == "Bahrain"]
+
+countries_p@data$Freq[countries_p@data$name == "Timor-Leste"] <- total_x_pais$Freq[total_x_pais$name == "Timor"]
+
+
+#hay paises definidos como regiones [medio oriente, africa, america del sur]
+#arbitrariamente se redistribuyen los casos según los países más importantes de cada región
+
+#region MIDDLE EAST se separa en IRAN, IRAQ, ARABIA y ARMENIA
+countries_p@data$Freq[countries_p@data$name == "Armenia"] <- total_x_pais$Freq[total_x_pais$name == "Middle East"] / 4
+countries_p@data$Freq[countries_p@data$name == "Iran"] <- total_x_pais$Freq[total_x_pais$name == "Middle East"] / 4 + countries_p@data$Freq[countries_p@data$name == "Iran"]
+countries_p@data$Freq[countries_p@data$name == "Iraq"] <- total_x_pais$Freq[total_x_pais$name == "Middle East"] / 4 + countries_p@data$Freq[countries_p@data$name == "Iraq"]
+countries_p@data$Freq[countries_p@data$name == "Saudi Arabia"] <- total_x_pais$Freq[total_x_pais$name == "Middle East"] / 4 + countries_p@data$Freq[countries_p@data$name == "Saudi Arabia"]
+
+
+#region NORTH AFRICA se separa en Marruecos, Egipto, Lybia y Algeria
+countries_p@data$Freq[countries_p@data$name == "Algeria"] <- total_x_pais$Freq[total_x_pais$name == "North Africa"] / 4 + countries_p@data$Freq[countries_p@data$name == "Algeria"]
+countries_p@data$Freq[countries_p@data$name == "Morocco"] <- total_x_pais$Freq[total_x_pais$name == "North Africa"] / 4 + countries_p@data$Freq[countries_p@data$name == "Morocco"]
+countries_p@data$Freq[countries_p@data$name == "Egypt"] <- total_x_pais$Freq[total_x_pais$name == "North Africa"] / 4 + countries_p@data$Freq[countries_p@data$name == "Egypt"]
+countries_p@data$Freq[countries_p@data$name == "Libya"] <- total_x_pais$Freq[total_x_pais$name == "North Africa"] / 4 + countries_p@data$Freq[countries_p@data$name == "Libya"]
+
+```
+
+### En el mapa se aprecia la cantidad de noticias o rumores que han surgido en los distintos países
+
+```{r}
+#defino la paleta de colores
+pal <- colorNumeric("Reds", NULL)
+
+#defino los valores de los popup
+state_popup <- paste0("<strong>Pais: </strong>", 
+                      countries_p$name,
+                      "<br><strong>Cantidad </strong>", 
+                      countries_p$Freq)
+#grafico el mapa
+leaflet(countries_p) %>%
+  addTiles() %>%
+  addPolygons(stroke = FALSE, smoothFactor = 0.3, fillOpacity = 1,
+              fillColor = ~pal(Freq), 
+              popup = state_popup) %>%
+  addLegend(pal = pal, values = ~Freq, opacity = 1.0,
+            labFormat = labelFormat(transform = function(x) round(x))) %>%
+  setView(lng = -0, lat = 0, zoom = 1)
+```
+
+------------------------------------------------------------------------
+
+-   A color más oscuro, mayor cantidad de reportes de noticias falsas o hechos sin verificar debidamente.En color gris figuran los paises sin reportes registrados.
+
+-   A simple vista se aprecian cuatro focos importantes: India, Estados Unidos, España y Brasil. Clickeando sobre cada país se puede ver el detalle.
+
+### El análisis a nivel continente brinda datos agrupados que resultan interesantes para sacar otras conclusiones.
+
+```{r, echo=FALSE}
+#analisis por Continente
+#agrupo totales por continente
+total_x_cont <- rbind(as.data.frame(table(base$Continent_Name1)), as.data.frame(table(base$Continent_Name2)), as.data.frame(table(base$Continent_Name3)), as.data.frame(table(base$Continent_Name4)))
+total_x_cont <- aggregate(total_x_cont$Freq, by=list(Var1 = total_x_cont$Var1), FUN=sum)
+
+#cambio los nombres de las columnas para graficar
+colnames(total_x_cont) <- c("continent", "Freq")
+
+#imprimo el gráfico
+#graf_cont <- ggplot(total_x_cont, aes(x=continent, y=Freq, fill=Freq)) +
+#  geom_bar(stat="identity") + 
+#  theme(axis.text.x = element_text(angle = 45, vjust = 0.5, hjust=1)) +
+#  ggtitle("Cantidad de casos por continente") +
+#  xlab("Continente")
+
+#plotly::ggplotly(graf_cont)
+```
+
+```{r, echo = FALSE}
+#preparo los datos para imprimir el mapa
+countries@data <- left_join(countries@data, total_x_cont, by=c("continent"))
+
+#defino la paleta de colores y armo el mapa
+pal <- colorNumeric("Reds", NULL)
+
+#defino los valores de los popup
+state_popup <- paste0("<strong>Continente: </strong>", 
+                      countries$continent  ,
+                      "<br><strong>Cantidad </strong>", 
+                      countries$Freq)
+
+leaflet(countries) %>%
+  addTiles() %>%
+  addPolygons(stroke = FALSE, smoothFactor = 0.3, fillOpacity = 1,
+              fillColor = ~pal(Freq),
+              popup = state_popup) %>%
+  addLegend(pal = pal, values = ~Freq, opacity = 1.0,
+            labFormat = labelFormat(transform = function(x) round(x))) %>%
+  setView(lng = -0, lat = 0, zoom = 1)
+
+```
+
+------------------------------------------------------------------------
+
+-   Si bien Estados Unidos en forma individual acumulaba una gran cantidad de reportes, el resto de Norte y Centro América no posee gran cantidad.
+
+-   Tanto Europa como Asia reunen la mayor cantidad de reportes. El 65% de los reportes se concentra en esos dos continentes.
+
+-   Debajo aparecen Sudamérica y Norteamérica + CentroAmérica (estos dos se consideran en forma conjunta en el presente mapa por la forma en la que están armados los datos).
+
+### Cada país, cada continente tiene su idiosincracia y sus propias problemáticas. Al ver la distribución de los reclamos según categoría se puede apreciar claramente.
+
+```{r}
+categoria_x_continente <- as.matrix(table(base$Category, base$Continent_Name1))
+
+heatmap(categoria_x_continente, cexRow = 1, cexCol = 0.8, Colv = NA, Rowv = NA,scale = "column")
+```
+
+------------------------------------------------------------------------
+
+Hay varios datos que llaman la atención
+
+-   Las teorías conspirativas son la categoría con menor cantidad de reportes en Asia y la mayor en Europa.
+
+-   En Sudamérica la mayor cantidad de noticias fueron respecto de la cura y las autoridades.
+
+-   En Norteamérica se reportaron mayormente casos sobre las autoridades y otros tópicos.
+
+### Los idiomas usados en las noticias varían según el continente en el que se esparzan. Algunas veces nos encontramos con alguna sorpresa. 
+
+```{r}
+library(plotly)
+#analizo los idiomas que circulan por continente. Me detengo en aquellos que circulan por muchos continentes distintos
+idiomas_x_continente <- as.data.frame(table(base$Continent_Name1, base$Language.of.your.fact.check))
+cant_idiomas_distintos <- as.data.frame(table(idiomas_x_continente$Var2[idiomas_x_continente$Freq>0]))
+colnames(cant_idiomas_distintos) <- c("Idioma", "Cant_Continentes")
+idiomas <- cant_idiomas_distintos$Idioma[cant_idiomas_distintos$Cant_Continentes > 2]
+
+#DT::datatable(cant_idiomas_distintos[cant_idiomas_distintos$Freq > 2,])
+
+idiomas_usados <- subset(idiomas_x_continente, Var2 %in% idiomas)
+colnames(idiomas_usados) <- c("Continente", "Idioma", "Freq")
+
+ggplot(idiomas_usados, aes(x = Continente, y = Idioma, fill = Freq)) + 
+  geom_tile() +
+  scale_fill_gradient(low="yellow", high="red") + 
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
+```
+
+------------------------------------------------------------------------
+
+En el siguiente mapa de calor se muestras aquellos idiomas que aparecen en más de 2 continentes. 
+
+Si bien en gran parte de los casos se da el resultado lógico, hay resultados no esperados. En Sudamérica el idioma mayoritario es el español. El mismo idioma se presenta mucho en Norteamérica y en Europa. 
+En el Viejo Continente aparece más noticias en francés que en inglés. Sin embargo, este último es el que más apareció en Asia. 
+En África también prevaleció el idioma inglés. 
+
+### MetricsGraphics enables easy creation of D3 scatterplots, line charts, and histograms.
+
+```{r}
+library(metricsgraphics)
+mjs_plot(mtcars, x=wt, y=mpg) %>%
+  mjs_point(color_accessor=carb, size_accessor=carb) %>%
+  mjs_labs(x="Weight of Car", y="Miles per Gallon")
+```
+
+------------------------------------------------------------------------
+
+<https://hrbrmstr.github.io/metricsgraphics/>
+
+Building metricsgraphics charts follows the "piping" idiom made popular through the magrittr, ggvis and dplyr packages. This makes it possible to avoid one giant function with a ton of parameters and facilitates breaking out the chart building into logical steps.
+
+While MetricsGraphics.js charts may not have the flexibility of ggplot2, you can build functional, interactive [multi-]line, scatterplot, bar charts & histograms and + even link charts together.

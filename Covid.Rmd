@@ -12,9 +12,13 @@ knitr::opts_chunk$set(echo = TRUE)
 # stringr y stringi: para arreglar caracteres con acento 
 #lubridate: para corregir problemas de fechas
 #ggplot y plotly: para graficar
-#dplyr: manejo de fechas y datos
+#dplyr, tidytext y tidyverse: manejo de fechas y datos
 #rgdal, leaflet, htmlwidgets y htmltools: para mapas
-paquetes<-c("stringr","stringi", "lubridate", "ggplot2", "dplyr", "plotly", "rgdal", "leaflet", "htmlwidgets", "htmltools", "tidytext", "tidyverse", "wordcloud", "DT")
+#htmlwidgets, htmltools para usar elementos html
+#wordcloud para nube de palabras
+#DT para impresión de tablas
+#hrbrthemes para paleta de colores
+paquetes<-c("stringr","stringi", "lubridate", "ggplot2", "dplyr", "plotly", "rgdal", "leaflet", "htmlwidgets", "htmltools", "tidytext", "tidyverse", "wordcloud", "DT","hrbrthemes")
 
 for(i in paquetes){
   if(!require(i, character.only = TRUE)){
@@ -179,6 +183,47 @@ base$Continent_Name3[base$Country.3 == "North America"] <- "North America"
 base$Continent_Name4[base$Country.4 == "Central America"] <- "North America"
 ```
 
+```{r, echo=FALSE}
+#verificación de valores únicos
+#hay varias tablas que contienen valores idénticos duplicados (por ej. other, others, Other)
+
+#table(base$Category)
+base$Category[base$Category == "Conspiracy theory" | base$Category == "Conspiracy Theory"] <- "Conspiracy theories"
+base$Category[base$Category == "Cure " | base$Category == "Cures" | base$Category == "Cures "] <- "Cure"
+base$Category[base$Category == "other" | base$Category == "Other" | base$Category == "Prevention" ] <- "Others" 
+base$Category[base$Category == "Symptoms "] <- "Symptoms" 
+
+#elimino niveles no usados
+base$Category <- factor(base$Category)
+
+#en el campo final.rating se corrigen errores y se agrupan los menores en categoría "otros"
+base$Final.rating <- toupper(base$Final.rating)
+base$Final.rating[base$Final.rating == "MISLEADING " | base$Final.rating == "MISL" | base$Final.rating == " MISLEADING "] <- "MISLEADING" 
+base$Final.rating[base$Final.rating == "FALSE "] <- "FALSE" 
+base$Final.rating[base$Final.rating == "PARTLY FALSE" | base$Final.rating == "PARTLY FALSE " | base$Final.rating == "PARTLY FALSE"] <- "PARTIALLY FALSE" 
+base$Final.rating[base$Final.rating == "NO EVIDENCE "] <- "NO EVIDENCE" 
+base$Final.rating[base$Final.rating == "MAINLY FALSE"] <- "FALSE" 
+base$Final.rating[base$Final.rating == "MISLEADING/FALSE" | base$Final.rating == "FALSE AND WITHOUT CONTEXT"] <- "FALSE" 
+base$Final.rating[base$Final.rating == "MAINLY CORRECT" | base$Final.rating == "MOSTLY TRUE"] <- "PARTIALLY TRUE" 
+base$Final.rating[base$Final.rating == "" | base$Final.rating == "(ORG. DOESN'T APPLY RATING)" | base$Final.rating == "EXPLANATORY" | base$Final.rating == "INACCURATE" | base$Final.rating == "UNPROVEN" | base$Final.rating == "UNSUPPORTED" ] <- "OTHERS" 
+
+base$Final.rating <- factor(base$Final.rating)
+
+
+#Arreglo la columna del idioma
+base$Language.of.your.fact.check[base$Language.of.your.fact.check == "Brazil"] <- "Portuguese"
+base$Language.of.your.fact.check[base$Language.of.your.fact.check == "english" | base$Language.of.your.fact.check == "English " | base$Language.of.your.fact.check == "Englsih"] <- "English"
+base$Language.of.your.fact.check[base$Language.of.your.fact.check == "Georgian "] <- "Georgian"
+base$Language.of.your.fact.check[base$Language.of.your.fact.check == "hindi"] <- "Hindi"
+base$Language.of.your.fact.check[base$Language.of.your.fact.check == "korean"] <- "Korean"
+base$Language.of.your.fact.check[base$Language.of.your.fact.check == "odia"] <- "Odia"
+base$Language.of.your.fact.check[base$Language.of.your.fact.check == "spanish"] <- "Spanish"
+base$Language.of.your.fact.check[base$Language.of.your.fact.check == "thai"] <- "Thai"
+
+base$Language.of.your.fact.check <- factor(base$Language.of.your.fact.check)
+
+```
+
 ### Período Evaluado 
 
 `r min(base$When.did.you.see.the.claim.)`  hasta `r max(base$When.did.you.see.the.claim.)`
@@ -326,7 +371,7 @@ plotly::ggplotly(graf_cont)
 countries@data <- left_join(countries@data, total_x_cont, by=c("continent"))
 
 #defino la paleta de colores y armo el mapa
-pal <- colorNumeric("Blues", NULL)
+pal <- colorNumeric("Reds", NULL)
 
 #defino los valores de los popup
 state_popup <- paste0("<strong>Continente: </strong>", 
@@ -360,7 +405,7 @@ colnames(total_x_fuente) <- c("Organizacion", "Freq")
 graf_fuente <- ggplot(total_x_fuente[total_x_fuente$Freq > 100,], aes(x=Organizacion, y=Freq, fill=Freq)) +
   geom_bar(stat="identity") + 
   theme(axis.text.x = element_text(angle = 45, vjust = 0.5, hjust=1)) +
-  ggtitle("Cantidad de reportes por Organización (organizaciones con más de 100 reportes)") +
+  ggtitle("Cantidad de reportes por Organización (más de 100 reportes)") +
   xlab("Organización Reportante")
 
 plotly::ggplotly(graf_fuente)
@@ -418,3 +463,47 @@ wordcloud(words = a$word, freq = a$n, min.freq = 1, max.words=70,
            random.order=FALSE,scale=c(3,.6),
            colors=brewer.pal(8, "Dark2"))
 ``` 
+
+### Categoría por Continente
+
+```{r, echo=FALSE}
+#analizo las categorías por continente. Está bueno para ver que tipo de noticias circulan según 
+#ideologías o problemas locales
+categoria_x_continente <- as.data.frame(table(base$Category, base$Continent_Name1))
+
+colnames(categoria_x_continente) <- c("Categoria", "Continente", "Freq")
+
+p <- ggplot(categoria_x_continente,aes(x = Categoria ,y = Freq)) + 
+  geom_bar(aes(fill = Continente),stat = "identity",position = "dodge") +
+    theme(axis.text.x = element_text(angle = 45, vjust = 0.5, hjust=1))
+
+plotly::ggplotly(p)
+
+categoria_x_continente <- as.matrix(table(base$Category, base$Continent_Name1))
+
+heatmap(categoria_x_continente, cexRow = 1, cexCol = 0.8, Colv = NA, Rowv = NA,scale = "column")
+```
+
+### Idiomas
+
+#### Idiomas de las noticias usados en más de 2 continentes distintos
+
+```{r, echo = FALSE}
+#analizo los idiomas que circulan por continente. Me detengo en aquellos que circulan por muchos continentes distintos
+idiomas_x_continente <- as.data.frame(table(base$Continent_Name1, base$Language.of.your.fact.check))
+cant_idiomas_distintos <- as.data.frame(table(idiomas_x_continente$Var2[idiomas_x_continente$Freq>0]))
+colnames(cant_idiomas_distintos) <- c("Idioma", "Cant_Continentes")
+idiomas <- cant_idiomas_distintos$Idioma[cant_idiomas_distintos$Cant_Continentes > 2]
+
+#DT::datatable(cant_idiomas_distintos[cant_idiomas_distintos$Freq > 2,])
+
+idiomas_usados <- subset(idiomas_x_continente, Var2 %in% idiomas)
+colnames(idiomas_usados) <- c("Continente", "Idioma", "Freq")
+
+p <- ggplot(idiomas_usados, aes(x = Continente, y = Idioma, fill = Freq)) + 
+  geom_tile() +
+  scale_fill_gradient(low="yellow", high="red") + 
+  theme(axis.text.x = element_text(angle = 45, vjust = 0.5, hjust=1)) 
+
+ggplotly(p, tooltip="text")
+```
