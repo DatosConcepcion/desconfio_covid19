@@ -132,6 +132,17 @@ base$Country.3[base$Country.3 == "Venezuela "] <- "Venezuela"
 levels(base$Country.4) <- as.factor(c(levels(base$Country.4), "Congo"))
 base$Country.4[base$Country.4 == "DR Congo"] <- "Congo"
 
+#arreglo unos paises duplicados o que están en dos continentes
+#caso contrario duplica a la hora del join
+paises <- unique(paises)
+paises <- paises[!(paises$Continent_Name == "Asia" & paises$nombre_corto == "Armenia"),]
+paises <- paises[!(paises$Continent_Name == "Europe" & paises$nombre_corto == "Azerbaijan"),]
+paises <- paises[!(paises$Continent_Name == "Asia" & paises$nombre_corto == "Cyprus"),]
+paises <- paises[!(paises$Continent_Name == "Asia" & paises$nombre_corto == "Georgia"),]
+paises <- paises[!(paises$Continent_Name == "Europe" & paises$nombre_corto == "Kazakhstan"),]
+paises <- paises[!(paises$Continent_Name == "Asia" & paises$nombre_corto == "Russia"),]
+paises <- paises[!(paises$Continent_Name == "Asia" & paises$nombre_corto == "Turkey"),]
+
 #creo cuatro variables continente, 1 por pais
 base <- dplyr::left_join(base, paises, by=c("Country.1" = "nombre_corto"), keep= FALSE, suffix=c("1","2"))
 base <- dplyr::left_join(base, paises, by=c("Country.2" = "nombre_corto"), keep= FALSE, suffix=c("1","2"))
@@ -181,6 +192,30 @@ base$Continent_Name3[base$Country.3 == "North America"] <- "North America"
 
 #campo country.4
 base$Continent_Name4[base$Country.4 == "Central America"] <- "North America"
+
+#arreglo campo WHO SAID POST IT para averiguar las redes sociales donde se posteo
+#hay muchos errores de tipeo. Dada la cantidad de opciones disintas analizo las ppales. Hay mucho
+# texto libre
+base$Who.said.posted.it. <- toupper(base$Who.said.posted.it.)
+
+#agrego columnas flag para determinar la red
+base$facebook <- 0
+base$twitter <- 0
+base$whatsapp <- 0
+base$instagram <- 0
+base$youtube <- 0
+base$socialmedia <- 0 
+base$website <- 0
+base$telegram <- 0
+
+base$facebook <- base$facebook <- lapply(base$Who.said.posted.it., FUN=grepl, pattern=("FACEBOOK|FB"))
+base$twitter <- lapply(base$Who.said.posted.it., FUN=grepl, pattern="TWITTER")
+base$whatsapp <- lapply(base$Who.said.posted.it., FUN=grepl, pattern="WHATSAPP")
+base$instagram <- lapply(base$Who.said.posted.it., FUN=grepl, pattern="INSTAGRAM")
+base$youtube <- lapply(base$Who.said.posted.it., FUN=grepl, pattern="YOUTUBE")
+base$socialmedia <- lapply(base$Who.said.posted.it., FUN=grepl, pattern="MEDIA")
+base$website <- lapply(base$Who.said.posted.it., FUN=grepl, pattern="SITE")
+base$telegram <- lapply(base$Who.said.posted.it., FUN=grepl, pattern="TELEGRAM")
 ```
 
 ```{r, echo=FALSE}
@@ -507,3 +542,26 @@ p <- ggplot(idiomas_usados, aes(x = Continente, y = Idioma, fill = Freq)) +
 
 ggplotly(p, tooltip="text")
 ```
+
+### Redes - Medio de Propagación
+
+#### Redes sociales por las cuales se propagaron las noticias
+
+```{r, echo = FALSE}
+redes <- base[, c("Continent_Name1", "facebook", "twitter", "whatsapp", "youtube", "instagram", "socialmedia", "website", "telegram")]
+redes_tabla <- gather(redes, "red", "usada", -Continent_Name1)
+redes_tabla$usada[redes_tabla$usada == "FALSE"] <- 0
+redes_tabla$usada[redes_tabla$usada == "TRUE"] <- 1
+redes_tabla$usada <- as.vector(unlist(redes_tabla$usada))
+
+total_redes <- aggregate(redes_tabla$usada, by=list(redes_tabla$Continent_Name1, redes_tabla$red), FUN=sum)
+colnames(total_redes) <- c("Continente", "Red", "Freq")
+
+p <- ggplot(total_redes, aes(x = Continente, y = Red, fill = Freq)) + 
+  geom_tile() +
+  scale_fill_gradient(low="yellow", high="red") + 
+  theme(axis.text.x = element_text(angle = 45, vjust = 0.5, hjust=1)) 
+
+ggplotly(p, tooltip="text")
+```
+

@@ -120,6 +120,17 @@ base$Country.3[base$Country.3 == "Venezuela "] <- "Venezuela"
 levels(base$Country.4) <- as.factor(c(levels(base$Country.4), "Congo"))
 base$Country.4[base$Country.4 == "DR Congo"] <- "Congo"
 
+#arreglo unos paises duplicados o que están en dos continentes
+#caso contrario duplica a la hora del join
+paises <- unique(paises)
+paises <- paises[!(paises$Continent_Name == "Asia" & paises$nombre_corto == "Armenia"),]
+paises <- paises[!(paises$Continent_Name == "Europe" & paises$nombre_corto == "Azerbaijan"),]
+paises <- paises[!(paises$Continent_Name == "Asia" & paises$nombre_corto == "Cyprus"),]
+paises <- paises[!(paises$Continent_Name == "Asia" & paises$nombre_corto == "Georgia"),]
+paises <- paises[!(paises$Continent_Name == "Europe" & paises$nombre_corto == "Kazakhstan"),]
+paises <- paises[!(paises$Continent_Name == "Asia" & paises$nombre_corto == "Russia"),]
+paises <- paises[!(paises$Continent_Name == "Asia" & paises$nombre_corto == "Turkey"),]
+
 #creo cuatro variables continente, 1 por pais
 base <- dplyr::left_join(base, paises, by=c("Country.1" = "nombre_corto"), keep= FALSE, suffix=c("1","2"))
 base <- dplyr::left_join(base, paises, by=c("Country.2" = "nombre_corto"), keep= FALSE, suffix=c("1","2"))
@@ -196,6 +207,31 @@ base$Final.rating[base$Final.rating == "MAINLY CORRECT" | base$Final.rating == "
 base$Final.rating[base$Final.rating == "" | base$Final.rating == "(ORG. DOESN'T APPLY RATING)" | base$Final.rating == "EXPLANATORY" | base$Final.rating == "INACCURATE" | base$Final.rating == "UNPROVEN" | base$Final.rating == "UNSUPPORTED" ] <- "OTHERS" 
 
 base$Final.rating <- factor(base$Final.rating)
+
+#arreglo campo WHO SAID POST IT para averiguar las redes sociales donde se posteo
+#hay muchos errores de tipeo. Dada la cantidad de opciones disintas analizo las ppales. Hay mucho
+# texto libre
+base$Who.said.posted.it. <- toupper(base$Who.said.posted.it.)
+
+#agrego columnas flag para determinar la red
+base$facebook <- 0
+base$twitter <- 0
+base$whatsapp <- 0
+base$instagram <- 0
+base$youtube <- 0
+base$socialmedia <- 0 
+base$website <- 0
+base$telegram <- 0
+
+base$facebook <- base$facebook <- lapply(base$Who.said.posted.it., FUN=grepl, pattern=("FACEBOOK|FB"))
+base$twitter <- lapply(base$Who.said.posted.it., FUN=grepl, pattern="TWITTER")
+base$whatsapp <- lapply(base$Who.said.posted.it., FUN=grepl, pattern="WHATSAPP")
+base$instagram <- lapply(base$Who.said.posted.it., FUN=grepl, pattern="INSTAGRAM")
+base$youtube <- lapply(base$Who.said.posted.it., FUN=grepl, pattern="YOUTUBE")
+base$socialmedia <- lapply(base$Who.said.posted.it., FUN=grepl, pattern="MEDIA")
+base$website <- lapply(base$Who.said.posted.it., FUN=grepl, pattern="SITE")
+base$telegram <- lapply(base$Who.said.posted.it., FUN=grepl, pattern="TELEGRAM")
+
 
 ```
 
@@ -408,19 +444,29 @@ Si bien en gran parte de los casos se da el resultado lógico, hay resultados no
 En el Viejo Continente aparece más noticias en francés que en inglés. Sin embargo, este último es el que más apareció en Asia. 
 En África también prevaleció el idioma inglés. 
 
-### MetricsGraphics enables easy creation of D3 scatterplots, line charts, and histograms.
+### Redes usadas en los distintos continentes
+
+```{r, echo = FALSE}
+redes <- base[, c("Continent_Name1", "facebook", "twitter", "whatsapp", "youtube", "instagram", "socialmedia", "website", "telegram")]
+redes_tabla <- gather(redes, "red", "usada", -Continent_Name1)
+redes_tabla$usada[redes_tabla$usada == "FALSE"] <- 0
+redes_tabla$usada[redes_tabla$usada == "TRUE"] <- 1
+redes_tabla$usada <- as.vector(unlist(redes_tabla$usada))
+```
+
 
 ```{r}
-library(metricsgraphics)
-mjs_plot(mtcars, x=wt, y=mpg) %>%
-  mjs_point(color_accessor=carb, size_accessor=carb) %>%
-  mjs_labs(x="Weight of Car", y="Miles per Gallon")
+total_redes <- aggregate(redes_tabla$usada, by=list(redes_tabla$Continent_Name1, redes_tabla$red), FUN=sum)
+colnames(total_redes) <- c("Continente", "Red", "Freq")
+
+ggplot(total_redes, aes(x = Continente, y = Red, fill = Freq)) + 
+  geom_tile() +
+  scale_fill_gradient(low="yellow", high="red") + 
+  theme(axis.text.x = element_text(angle = 45, vjust = 0.5, hjust=1)) 
 ```
+
+
 
 ------------------------------------------------------------------------
 
-<https://hrbrmstr.github.io/metricsgraphics/>
-
-Building metricsgraphics charts follows the "piping" idiom made popular through the magrittr, ggvis and dplyr packages. This makes it possible to avoid one giant function with a ton of parameters and facilitates breaking out the chart building into logical steps.
-
-While MetricsGraphics.js charts may not have the flexibility of ggplot2, you can build functional, interactive [multi-]line, scatterplot, bar charts & histograms and + even link charts together.
+En el gráfico se puede apreciar la distribución de las redes usadas para propagar las noticias según el Continente. 
