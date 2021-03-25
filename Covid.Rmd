@@ -32,6 +32,7 @@ for(i in paquetes){
 
 ```{r, echo=FALSE}
 #leo la base de datos
+#setwd("C:/Users/Porotos/Documents/Desconfio_Covid/")
 base <- read.csv("Base de datos.csv", sep= ",")
 
 #primera mirada a los datos
@@ -40,8 +41,10 @@ base <- read.csv("Base de datos.csv", sep= ",")
 #chequeo tipo de datos
 #str(base)
 
-#corrijo los acentos y caracteres extraños
 original <- base
+
+#cargo los datos de poblacion
+poblacion <- read.csv("poblacion.csv",sep=";")
 ```
 
 ***
@@ -294,6 +297,74 @@ graf_pais <- ggplot(total_x_pais[total_x_pais$Freq>200,], aes(x=Pais, y=Freq, fi
 plotly::ggplotly(graf_pais)
 ```
 
+#### Detalle por país c/100.000 habitantes
+
+```{r, echo=FALSE}
+#analisis por paises
+#joineo c poblacion
+total_x_pais_sd <- merge(total_x_pais, poblacion, by=c("Pais"))
+total_x_pais_sd$cant_100k <- 100000 * total_x_pais_sd$Freq / total_x_pais_sd$Poblacion
+
+#grafíco en plotly para que sea interactivo
+graf_pais <- ggplot(total_x_pais_sd[total_x_pais_sd$cant_100k > 0.5,], aes(x=Pais, y=cant_100k, fill=cant_100k)) +
+              geom_bar(stat="identity") + 
+              theme(axis.text.x = element_text(angle = 45, vjust = 0.5, hjust=1)) +
+              ggtitle("Cantidad de reportes c/100.000 habitantes")
+
+plotly::ggplotly(graf_pais)
+```
+
+
+
+```{r, echo=FALSE}
+#analisis por paises
+#compilo el total de casos por país
+total_x_pais_latam <- rbind(as.data.frame(table(base$Country.1[base$Continent_Name1 == "South America"])), as.data.frame(table(base$Country.2[base$Continent_Name2 == "South America"])),as.data.frame(table(base$Country.3[base$Continent_Name3 == "South America"])),as.data.frame(table(base$Country.4[base$Continent_Name4 == "South America"])))
+total_x_pais_latam <- aggregate(total_x_pais_latam$Freq, by=list(Var1 = total_x_pais_latam$Var1), FUN=sum)
+
+#cambio los nombres de las columnas y elimino valores nulos
+colnames(total_x_pais_latam) <- c("Pais", "Freq")
+total_x_pais_latam <- total_x_pais_latam[total_x_pais_latam$Pais != "", ]
+total_x_pais_latam <- total_x_pais_latam[!is.na(total_x_pais_latam$Pais), ]
+total_x_pais_latam <- total_x_pais_latam[order(total_x_pais_latam$Freq),]
+
+
+#grafíco en plotly para que sea interactivo
+graf_pais <- ggplot(total_x_pais_latam, aes(x=reorder(Pais,-Freq), y=Freq, fill=Freq)) +
+              geom_bar(stat="identity") + 
+              theme(axis.text.x = element_text(angle = 45, vjust = 0.5, hjust=1), 
+                    axis.title.x=element_blank()) +
+              ggtitle("América del Sur: Cantidad de reportes por país")
+
+plotly::ggplotly(graf_pais)
+```
+
+#### Detalle cada 100.000 habitantes
+
+```{r, echo=FALSE}
+#analisis por paises
+#joineo c poblacion
+total_x_pais_latam_sd <- merge(total_x_pais_latam, poblacion, by=c("Pais"))
+total_x_pais_latam_sd$cant_100k <- 100000 * total_x_pais_latam_sd$Freq / total_x_pais_latam_sd$Poblacion
+
+
+#grafíco en plotly para que sea interactivo
+graf_pais <- ggplot(total_x_pais_latam_sd, aes(x=reorder(Pais,-Freq), y=cant_100k, fill=cant_100k)) +
+              geom_bar(stat="identity") + 
+              theme(axis.text.x = element_text(angle = 45, vjust = 0.5, hjust=1), 
+                    axis.title.x=element_blank()) +
+              ggtitle("América del Sur: Cantidad de reportes cada 100.000 habitantes")
+
+plotly::ggplotly(graf_pais)
+```
+
+
+#### Detalle por País - Sudamérica
+
+```{r, echo=FALSE}
+DT::datatable(total_x_pais_latam_sd[order(-total_x_pais_latam_sd$cant_100k),], rownames = FALSE)
+```
+
 ```{r, echo=FALSE, include=FALSE}
 #modifico las columnas para armar el mapa
 colnames(total_x_pais) <- c("name", "Freq")
@@ -369,14 +440,30 @@ state_popup <- paste0("<strong>Pais: </strong>",
 #grafico el mapa
 leaflet(countries_p) %>%
   addTiles() %>%
-  addPolygons(stroke = FALSE, smoothFactor = 0.3, fillOpacity = 1,
+  addPolygons(stroke = FALSE, smoothFactor = 0.3, fillOpacity = 10,
               fillColor = ~pal(Freq), 
               popup = state_popup) %>%
-  addLegend(pal = pal, values = ~Freq, opacity = 1.0,
+  addLegend(pal = pal, values = ~(Freq), opacity = 1.0,
             labFormat = labelFormat(transform = function(x) round(x))) %>%
-  setView(lng = -0, lat = 0, zoom = 1)
+  setView(lng = -0, lat = -0, zoom = 1)
 ```
 
+#### Estado de Situación en Sudamérica c/100.000 habitantes
+
+```{r, echo=FALSE}
+#grafico el mapa
+#convierto en cero los que no son de sudamérica para mejorar la escala
+countries_latam <- countries_p
+countries_latam@data$Freq[countries_latam@data$region_un != "Americas"] <- 0
+leaflet(countries_latam) %>%
+  addTiles() %>%
+  addPolygons(stroke = FALSE, smoothFactor = 0.3, fillOpacity = 1,
+              fillColor = ~pal(100000*Freq/pop_est), 
+              popup = state_popup) %>%
+  addLegend(pal = pal, values = ~(0:8), opacity = 1.0,title = "Cantidad",
+            labFormat = labelFormat(transform = function(x) round(x))) %>%
+  setView(lng = -68, lat = -30, zoom = 3)
+```
 
 #### Detalle por continente
 
@@ -389,6 +476,11 @@ total_x_cont <- aggregate(total_x_cont$Freq, by=list(Var1 = total_x_cont$Var1), 
 #cambio los nombres de las columnas para graficar
 colnames(total_x_cont) <- c("continent", "Freq")
 
+#agrego población con datos de wikipedia
+total_x_cont$Pobl <- c(1320000000, 4701000000, 801000000, 550000000,40201000, 510000000)
+
+total_x_cont$Cant_100k <- total_x_cont$Freq * 100000 / total_x_cont$Pobl
+
 #imprimo el gráfico
 graf_cont <- ggplot(total_x_cont, aes(x=continent, y=Freq, fill=Freq)) +
   geom_bar(stat="identity") + 
@@ -397,6 +489,15 @@ graf_cont <- ggplot(total_x_cont, aes(x=continent, y=Freq, fill=Freq)) +
   xlab("Continente")
 
 plotly::ggplotly(graf_cont)
+
+#imprimo el gráfico
+graf_cont_sd <- ggplot(total_x_cont, aes(x=continent, y=Cant_100k, fill=Cant_100k)) +
+  geom_bar(stat="identity") + 
+  theme(axis.text.x = element_text(angle = 45, vjust = 0.5, hjust=1)) +
+  ggtitle("Cantidad de casos cada 100.000 habitantes") +
+  xlab("Continente")
+
+plotly::ggplotly(graf_cont_sd)
 ```
 
 #### Mapa - Detalle por Continente
@@ -425,6 +526,30 @@ leaflet(countries) %>%
 
 ```
 
+
+#### Mapa - Detalle cada 100.000 habitantes - por Continente 
+
+```{r, echo = FALSE}
+#defino los valores de los popup
+state_popup <- paste0("<strong>Continente: </strong>", 
+                      countries$continent  ,
+                      "<br><strong>Cantidad </strong>", 
+                      countries$Freq,
+                      "<br><strong>Cantidad c/100k hab. </strong>",
+                      countries$Cant_100k
+                      )
+
+leaflet(countries) %>%
+  addTiles() %>%
+  addPolygons(stroke = FALSE, smoothFactor = 0.3, fillOpacity = 1,
+              fillColor = ~pal(Cant_100k),
+              popup = state_popup) %>%
+  addLegend(pal = pal, values = ~(Cant_100k), title = "Cant c/100000 hab.", opacity = 1.0,
+            labFormat = labelFormat(transform = function(x) round(x, digits = 2))) %>%
+  setView(lng = -0, lat = 0, zoom = 1)
+
+```
+
 ### Análisis por Organización reportante
 
 ```{r, echo = FALSE}
@@ -448,6 +573,7 @@ plotly::ggplotly(graf_fuente)
 
 
 ### Noticias Chequeadas - Análisis por Palabra 
+#### Top 10 palabras más usadas a nivel mundial
 
 ``` {r analisis_sentimientos, include=FALSE}
 #Inicio analisis de palabras columna what.did.you.fact.check
@@ -467,15 +593,29 @@ custom_stop_words <- custom_stop_words %>% add_row(word = "â", lexicon = "SMART
 fact_desc_word <- anti_join(fact_desc_word, custom_stop_words)
 
 #cuento frecuencia de palabras
-fact_desc_word %>% count(word, sort = TRUE) 
+#fact_desc_word %>% count(word, sort = TRUE) 
+
+#se unifican las distintas variantes para nombrar al COVID-19
+fact_desc_word_v2 <- fact_desc_word
+
+fact_desc_word_v2$word[(toupper(fact_desc_word_v2$word) == "COVID") | (toupper(fact_desc_word_v2$word) == "CORONA") | (toupper(fact_desc_word_v2$word) == "COVID19") | (toupper(fact_desc_word_v2$word) == "CORONAVIRUS")] <- "COVID-19"
+#fact_desc_word_v2[fact_desc_word_v2$word != "19"]
+```
+
+#Imprimo la tabla de palabras
+```{r, echo = FALSE}
+#cuento frecuencia de palabras
+palab2 <- fact_desc_word_v2 %>% count(word, sort = TRUE) 
+palab2 <- palab2[-2,]
+top10_palab <- head(palab2, n=10)
+DT::datatable(top10_palab, rownames = FALSE, )
 ```
 
 #### Palabras más usadas en los hechos chequeados
 
 ```{r grafico_frecuencia_palabras, echo=FALSE}
-
 #grafico la frecuencia de palabras
-fact_desc_word %>%
+palab2 %>%
   count(word, sort = TRUE) %>%
   filter(n > 300) %>%
   mutate(word = reorder(word, n)) %>%
@@ -483,21 +623,154 @@ fact_desc_word %>%
   geom_col() +
   xlab(NULL) +
   coord_flip()
-
-
 ```
 
 #### Mapa de palabras
 
 ```{r mapa_palabras, echo = FALSE}
 #preparo un df para graficar
-a <- fact_desc_word %>%
+a <- palab2 %>%
    count(word)
 
 wordcloud(words = a$word, freq = a$n, min.freq = 1, max.words=70,
            random.order=FALSE,scale=c(3,.6),
            colors=brewer.pal(8, "Dark2"))
 ``` 
+
+#### Top 10 palabras más usadas en Sudamérica
+
+``` {r analisis_sentimientos_latam, include=FALSE}
+#Inicio analisis de palabras columna what.did.you.fact.check
+#preparo los datos de la columna
+fact_desc <- data.frame(base$What.did.you.fact.check.[base$Continent_Name1 == "South America" | base$Continent_Name2 == "South America" | base$Continent_Name3 == "South America" | base$Continent_Name4 == "South America"])
+
+fact_desc <- tibble(text = fact_desc)
+fact_desc <- mutate(fact_desc, text = text$base.What.did.you.fact.check.)
+
+#separo por palabra
+fact_desc_word <-  unnest_tokens(fact_desc, word, text)
+
+#cargo los stop words
+custom_stop_words <- bind_rows(stop_words, tibble(word = tm::stopwords("english"),lexicon = "custom"))
+custom_stop_words <- custom_stop_words %>% add_row(word = "â", lexicon = "SMART")
+
+#saco los stop words
+fact_desc_word <- anti_join(fact_desc_word, custom_stop_words)
+
+#cuento frecuencia de palabras
+#fact_desc_word %>% count(word, sort = TRUE) 
+
+#se unifican las distintas variantes para nombrar al COVID-19
+fact_desc_word_v2 <- fact_desc_word
+fact_desc_word_v2$word[(toupper(fact_desc_word_v2$word) == "COVID") | (toupper(fact_desc_word_v2$word) == "CORONA") | (toupper(fact_desc_word_v2$word) == "COVID19") | (toupper(fact_desc_word_v2$word) == "CORONAVIRUS")] <- "COVID-19"
+
+#arreglo brazilian y brazil - arreglo sao paulo
+fact_desc_word_v2$word[(toupper(fact_desc_word_v2$word) == "BRAZIL") | (toupper(fact_desc_word_v2$word) == "BRAZILIAN")] <- "BRAZILIAN"
+
+fact_desc_word_v2$word[(toupper(fact_desc_word_v2$word) == "sã") | (toupper(fact_desc_word_v2$word) == "paulo")] <- "SAO_PAULO"
+
+#fact_desc_word_v2[fact_desc_word_v2$word != "19"]
+```
+
+#Imprimo la tabla de palabras
+```{r, echo = FALSE}
+#cuento frecuencia de palabras
+palab2 <- fact_desc_word_v2 %>% count(word, sort = TRUE) 
+palab2 <- palab2[-c(1,3),]
+top10_palab <- head(palab2, n=10)
+DT::datatable(top10_palab, rownames = FALSE, )
+```
+
+```{r grafico_frecuencia_palabras_latam, echo=FALSE}
+#grafico la frecuencia de palabras
+palab2 %>%
+  count(word, sort = TRUE) %>%
+  filter(n > 75) %>%
+  mutate(word = reorder(word, n)) %>%
+  ggplot(aes(word, n)) +
+  geom_col() +
+  xlab(NULL) +
+  coord_flip()
+```
+
+#### Mapa de palabras - Sudamérica
+
+```{r mapa_palabras_latam, echo = FALSE}
+#preparo un df para graficar
+a <- palab2 %>%
+   count(word)
+
+wordcloud(words = a$word, freq = a$n, min.freq = 1, max.words=70,
+           random.order=FALSE,scale=c(3,.6),
+           colors=brewer.pal(8, "Dark2"))
+```
+
+
+
+#### Top 10 palabras más usadas en Bolivia
+
+``` {r analisis_sentimientos_bolivia, include=FALSE}
+#Inicio analisis de palabras columna what.did.you.fact.check
+#preparo los datos de la columna
+fact_desc <- data.frame(base$What.did.you.fact.check.[base$Country.1 == "Bolivia" | base$Country.2 == "Bolivia" | base$Country.3 == "Bolivia" | base$Country.4 == "Bolivia"])
+
+fact_desc <- tibble(text = fact_desc)
+fact_desc <- mutate(fact_desc, text = text$base.What.did.you.fact.check.)
+
+#separo por palabra
+fact_desc_word <-  unnest_tokens(fact_desc, word, text)
+
+#cargo los stop words
+custom_stop_words <- bind_rows(stop_words, tibble(word = tm::stopwords("english"),lexicon = "custom"))
+custom_stop_words <- custom_stop_words %>% add_row(word = "â", lexicon = "SMART")
+
+#saco los stop words
+fact_desc_word <- anti_join(fact_desc_word, custom_stop_words)
+
+#cuento frecuencia de palabras
+#fact_desc_word %>% count(word, sort = TRUE) 
+
+#se unifican las distintas variantes para nombrar al COVID-19
+fact_desc_word_v2 <- fact_desc_word
+fact_desc_word_v2$word[(toupper(fact_desc_word_v2$word) == "COVID") | (toupper(fact_desc_word_v2$word) == "CORONA") | (toupper(fact_desc_word_v2$word) == "COVID19") | (toupper(fact_desc_word_v2$word) == "CORONAVIRUS")] <- "COVID-19"
+
+#arreglo BOLIVIA BOLIVIAN
+fact_desc_word_v2$word[(toupper(fact_desc_word_v2$word) == "BOLIVIA") | (toupper(fact_desc_word_v2$word) == "BOLIVIAN")] <- "BOLIVIA"
+
+#fact_desc_word_v2[fact_desc_word_v2$word != "19"]
+```
+
+```{r, echo = FALSE}
+#cuento frecuencia de palabras
+palab2 <- fact_desc_word_v2 %>% count(word, sort = TRUE) 
+palab2 <- palab2[-c(1,3),]
+top10_palab <- head(palab2, n=10)
+DT::datatable(top10_palab)
+```
+
+```{r grafico_frecuencia_palabras_bolivia, echo=FALSE}
+#grafico la frecuencia de palabras
+palab2 %>%
+  count(word, sort = TRUE) %>%
+  mutate(word = reorder(word, n)) %>%
+  filter(n > 4) %>%
+  ggplot(aes(word, n)) +
+  geom_col() +
+  xlab(NULL) +
+  coord_flip()
+```
+
+#### Mapa de palabras - Bolivia
+
+```{r mapa_palabras_bolivia, echo = FALSE}
+#preparo un df para graficar
+a <- palab2 %>%
+   count(word)
+
+wordcloud(words = a$word, freq = a$n, min.freq = 1, max.words=70,
+           random.order=FALSE,scale=c(3,.6),
+           colors=brewer.pal(8, "Dark2"))
+```
 
 ### Categoría por Continente
 
@@ -508,8 +781,8 @@ categoria_x_continente <- as.data.frame(table(base$Category, base$Continent_Name
 
 colnames(categoria_x_continente) <- c("Categoria", "Continente", "Freq")
 
-p <- ggplot(categoria_x_continente,aes(x = Categoria ,y = Freq)) + 
-  geom_bar(aes(fill = Continente),stat = "identity",position = "dodge") +
+p <- ggplot(categoria_x_continente,aes(x = Continente ,y = Freq)) + 
+  geom_bar(aes(fill = Categoria),stat = "identity",position = "dodge") +
     theme(axis.text.x = element_text(angle = 45, vjust = 0.5, hjust=1))
 
 plotly::ggplotly(p)
@@ -517,6 +790,26 @@ plotly::ggplotly(p)
 categoria_x_continente <- as.matrix(table(base$Category, base$Continent_Name1))
 
 heatmap(categoria_x_continente, cexRow = 1, cexCol = 0.8, Colv = NA, Rowv = NA,scale = "column")
+```
+
+### Categoría en Sudamérica por País
+
+```{r, echo=FALSE}
+#analizo las categorías por continente. Está bueno para ver que tipo de noticias circulan según 
+#ideologías o problemas locales
+categoria_latam <- as.data.frame(table(base$Category[base$Continent_Name1=="South America"], base$Country.1[base$Continent_Name1=="South America"]))
+
+colnames(categoria_latam) <- c("Categoria", "Pais", "Freq")
+
+p <- ggplot(categoria_latam,aes(x = Pais ,y = Freq)) + 
+  geom_bar(aes(fill = Categoria),stat = "identity",position = "dodge") +
+    theme(axis.text.x = element_text(angle = 45, vjust = 0.5, hjust=1))
+
+plotly::ggplotly(p)
+
+categoria_latam <- as.matrix(table(base$Category, base$Continent_Name1))
+
+heatmap(categoria_latam, cexRow = 1, cexCol = 0.8, Colv = NA, Rowv = NA,scale = "column")
 ```
 
 ### Idiomas
@@ -563,5 +856,88 @@ p <- ggplot(total_redes, aes(x = Continente, y = Red, fill = Freq)) +
   theme(axis.text.x = element_text(angle = 45, vjust = 0.5, hjust=1)) 
 
 ggplotly(p, tooltip="text")
+```
+
+#### Redes sociales por las cuales se propagaron las noticias
+#### SUDAMERICA
+
+```{r, echo = FALSE}
+redes_latam <- base[base$Continent_Name1=="South America", c("Country.1", "facebook", "twitter", "whatsapp", "youtube", "instagram", "socialmedia", "website", "telegram")]
+redes_tabla_latam <- gather(redes_latam, "red", "usada", -Country.1)
+redes_tabla_latam$usada[redes_tabla_latam$usada == "FALSE"] <- 0
+redes_tabla_latam$usada[redes_tabla_latam$usada == "TRUE"] <- 1
+redes_tabla_latam$usada <- as.vector(unlist(redes_tabla_latam$usada))
+
+total_redes_latam <- aggregate(redes_tabla_latam$usada, by=list(redes_tabla_latam$Country.1, redes_tabla_latam$red), FUN=sum)
+total_redes_latam_soloRed <- aggregate(redes_tabla_latam$usada, by=list(redes_tabla_latam$red), FUN=sum)
+
+colnames(total_redes_latam_soloRed) <- c("Red", "Freq")
+
+total_redes_latam_soloRed <- total_redes_latam_soloRed[total_redes_latam_soloRed$Freq > 0,]
+
+data <- total_redes_latam_soloRed %>% 
+  mutate(per=`Freq`/sum(`Freq`)) %>% 
+  arrange(desc(Red))
+data$label <- scales::percent(data$per)
+
+plot_ly(data=data,labels=~Red, values=~per, type="pie") %>% 
+    layout(title = 'Sudamérica - Medio por el que se propagaron las noticias',
+           xaxis = list(showgrid = FALSE, zeroline = FALSE, showticklabels = FALSE),
+           yaxis = list(showgrid = FALSE, zeroline = FALSE, showticklabels = FALSE))
+
+
+#ggplot(data=data)+
+#  geom_bar(aes(x="", y=per, fill=Red), stat="identity", width = 1)+
+#  coord_polar("y", start=0)+
+#  theme_void()+
+#  geom_text(aes(x=1, y = cumsum(per) - per/2, label=label)) +
+#  ggtitle("Sudamérica - Medio por el cual se propagaron las noticias")
+
+#p <- ggplot(total_redes_latam, aes(x = Country.1, y = Red, fill = Freq)) + 
+#  geom_tile() +
+#  scale_fill_gradient(low="yellow", high="red") + 
+#  theme(axis.text.x = element_text(angle = 45, vjust = 0.5, hjust=1)) 
+
+#ggplotly(p, tooltip="text")
+```
+
+```{r, echo=FALSE}
+redes_bolivia <- base[base$Country.1=="Bolivia", c("Country.1", "facebook", "twitter", "whatsapp", "youtube", "instagram", "socialmedia", "website", "telegram")]
+redes_tabla_bolivia <- gather(redes_bolivia, "red", "usada", -Country.1)
+redes_tabla_bolivia$usada[redes_tabla_bolivia$usada == "FALSE"] <- 0
+redes_tabla_bolivia$usada[redes_tabla_bolivia$usada == "TRUE"] <- 1
+redes_tabla_bolivia$usada <- as.vector(unlist(redes_tabla_bolivia$usada))
+
+total_redes_bolivia <- aggregate(redes_tabla_bolivia$usada, by=list(redes_tabla_bolivia$Country.1, redes_tabla_bolivia$red), FUN=sum)
+total_redes_bolivia_soloRed <- aggregate(redes_tabla_bolivia$usada, by=list(redes_tabla_bolivia$red), FUN=sum)
+
+colnames(total_redes_bolivia_soloRed) <- c("Red", "Freq")
+
+total_redes_bolivia_soloRed <- total_redes_bolivia_soloRed[total_redes_bolivia_soloRed$Freq > 0,]
+
+data <- total_redes_bolivia_soloRed %>% 
+  mutate(per=`Freq`/sum(`Freq`)) %>% 
+  arrange(desc(Red))
+data$label <- scales::percent(data$per)
+
+plot_ly(data=data,labels=~Red, values=~per, type="pie") %>% 
+    layout(title = 'Bolivia - Medio por el que se propagaron las noticias',
+           xaxis = list(showgrid = FALSE, zeroline = FALSE, showticklabels = FALSE),
+           yaxis = list(showgrid = FALSE, zeroline = FALSE, showticklabels = FALSE))
+
+
+#ggplot(data=data)+
+#  geom_bar(aes(x="", y=per, fill=Red), stat="identity", width = 1)+
+#  coord_polar("y", start=0)+
+#  theme_void()+
+#  geom_text(aes(x=1, y = cumsum(per) - per/2, label=label)) +
+#  ggtitle("Bolivia - Medio por el cual se propagaron las noticias")
+
+#p <- ggplot(total_redes_latam, aes(x = Country.1, y = Red, fill = Freq)) + 
+#  geom_tile() +
+#  scale_fill_gradient(low="yellow", high="red") + 
+#  theme(axis.text.x = element_text(angle = 45, vjust = 0.5, hjust=1)) 
+
+#ggplotly(p, tooltip="text")
 ```
 
